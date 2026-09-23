@@ -11,8 +11,8 @@ import {
   saveComicFiles,
   saveLibraryComic,
   storageEstimate,
-} from "./library.js?v=5-free-zoom";
-import { searchComicCatalog } from "./catalog.js?v=5-free-zoom";
+} from "./library.js?v=6-reader-flow";
+import { searchComicCatalog } from "./catalog.js?v=6-reader-flow";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -54,6 +54,7 @@ const dom = {
   bookMeta: $("#bookMeta"),
   readerViewport: $("#readerViewport"),
   pageStage: $("#pageStage"),
+  primaryPageShell: $(".page-shell-primary"),
   pageImage: $("#pageImage"),
   secondPageShell: $("#secondPageShell"),
   secondPageImage: $("#secondPageImage"),
@@ -149,6 +150,8 @@ const state = {
   guidedRegionIndex: -1,
   guidedCache: new Map(),
   freeZoomFactor: 2.8,
+  guidedSourceImage: null,
+  guidedSourcePageIndex: null,
   manualMode: false,
   manualStart: null,
   manualPointerId: null,
@@ -167,6 +170,7 @@ const state = {
   controlsTimer: null,
   pageAspect: null,
   guidedLayoutFrame: null,
+  pageTurnBusy: false,
   touch: { startX: 0, startY: 0, startTime: 0, pinchDistance: 0, pinchZoom: 1, lastTap: 0 },
 };
 
@@ -922,6 +926,7 @@ function unloadDistantScrollPage(shell) {
   const index = Number(shell.dataset.index);
   if (Math.abs(index - state.pageIndex) <= 4) return;
   const image = $("img", shell);
+  if (state.guidedActive && image === state.guidedSourceImage) return;
   image.removeAttribute("src");
   delete image.dataset.loaded;
 }
@@ -1013,6 +1018,7 @@ async function renderScrollView() {
 
 async function setPage(index, options = {}) {
   if (!state.reader) return;
+  if (state.guidedActive || state.manualMode) closeGuidedMode();
   const step = state.viewMode === "double" ? 2 : 1;
   state.pageIndex = Math.max(0, Math.min(state.pageCount - 1, Number(index) || 0));
   if (state.viewMode === "double") state.pageIndex = Math.floor(state.pageIndex / step) * step;
@@ -1028,19 +1034,84 @@ async function setPage(index, options = {}) {
   if (options.save !== false) scheduleHistorySave();
 }
 
-function nextPage() {
+function waitForAnimation(element, timeout = 620) {
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      element.removeEventListener("animationend", finish);
+      resolve();
+    };
+    element.addEventListener("animationend", finish, { once: true });
+    setTimeout(finish, timeout);
+  });
+}
+
+async function playDoublePageTurn(direction) {
+  if (state.viewMode !== "double" || matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+  const forward = direction === "next";
+  const rtl = state.direction === "rtl";
+  const leaf = forward ? dom.secondPageShell : dom.primaryPageShell;
+  if (!leaf || leaf.hidden) return false;
+  const baseAngle = forward ? -168 : 168;
+  const angle = rtl ? -baseAngle : baseAngle;
+  const origin = forward
+    ? (rtl ? "right center" : "left center")
+    : (rtl ? "left center" : "right center");
+  leaf.style.setProperty("--page-turn-angle", `${angle}deg`);
+  leaf.style.setProperty("--page-turn-origin", origin);
+  dom.pageStage.classList.add("page-turning");
+  leaf.classList.add("page-turn-leaf");
+  await waitForAnimation(leaf);
+  leaf.classList.remove("page-turn-leaf");
+  dom.pageStage.classList.remove("page-turning");
+  leaf.style.removeProperty("--page-turn-angle");
+  leaf.style.removeProperty("--page-turn-origin");
+  return true;
+}
+
+async function playSpreadArrival(direction) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const className = direction === "next" ? "page-turn-arrive-next" : "page-turn-arrive-previous";
+  dom.pageStage.classList.remove("page-turn-arrive-next", "page-turn-arrive-previous");
+  void dom.pageStage.offsetWidth;
+  dom.pageStage.classList.add(className);
+  await waitForAnimation(dom.pageStage, 360);
+  dom.pageStage.classList.remove(className);
+}
+
+async function nextPage() {
+  if (state.pageTurnBusy) return;
   const amount = state.viewMode === "double" ? 2 : 1;
   if (state.pageIndex >= state.pageCount - 1) {
     toast("Você chegou ao fim desta leitura.");
     return;
   }
-  setPage(state.pageIndex + amount, { smooth: state.viewMode === "scroll" });
+  state.pageTurnBusy = true;
+  try {
+    if (state.guidedActive || state.manualMode) closeGuidedMode();
+    const animated = await playDoublePageTurn("next");
+    await setPage(state.pageIndex + amount, { smooth: state.viewMode === "scroll" });
+    if (animated) await playSpreadArrival("next");
+  } finally {
+    state.pageTurnBusy = false;
+  }
 }
 
-function previousPage() {
+async function previousPage() {
+  if (state.pageTurnBusy) return;
   const amount = state.viewMode === "double" ? 2 : 1;
   if (state.pageIndex <= 0) return;
-  setPage(state.pageIndex - amount, { smooth: state.viewMode === "scroll" });
+  state.pageTurnBusy = true;
+  try {
+    if (state.guidedActive || state.manualMode) closeGuidedMode();
+    const animated = await playDoublePageTurn("previous");
+    await setPage(state.pageIndex - amount, { smooth: state.viewMode === "scroll" });
+    if (animated) await playSpreadArrival("previous");
+  } finally {
+    state.pageTurnBusy = false;
+  }
 }
 
 function updatePageControls() {
@@ -1225,14 +1296,12 @@ async function startGuidedMode() {
     closeGuidedMode();
     return;
   }
-  if (state.viewMode !== "single") await setViewMode("single");
-  setZoom(1);
-  state.rotation = 0;
-  applyPageVisuals();
   state.guidedActive = true;
   state.guidedRegions = [];
   state.guidedRegionIndex = -1;
   state.freeZoomFactor = 2.8;
+  state.guidedSourceImage = null;
+  state.guidedSourcePageIndex = null;
   dom.guidedLayer.hidden = false;
   dom.guidedCanvas.hidden = true;
   dom.guidedButton.classList.add("active");
@@ -1244,10 +1313,11 @@ async function startGuidedMode() {
 }
 
 function imageRegionRect(region) {
-  const imageRect = dom.pageImage.getBoundingClientRect();
+  const sourceImage = state.guidedSourceImage || dom.pageImage;
+  const imageRect = sourceImage.getBoundingClientRect();
   const layerRect = dom.guidedLayer.getBoundingClientRect();
-  const scaleX = imageRect.width / dom.pageImage.naturalWidth;
-  const scaleY = imageRect.height / dom.pageImage.naturalHeight;
+  const scaleX = imageRect.width / sourceImage.naturalWidth;
+  const scaleY = imageRect.height / sourceImage.naturalHeight;
   return {
     left: imageRect.left - layerRect.left + region.x * scaleX,
     top: imageRect.top - layerRect.top + region.y * scaleY,
@@ -1267,7 +1337,8 @@ function renderGuidedHotspots() {
 }
 
 function positionGuidedHotspots() {
-  if (!state.guidedActive || dom.guidedLayer.hidden || !dom.pageImage.naturalWidth) return;
+  const sourceImage = state.guidedSourceImage || dom.pageImage;
+  if (!state.guidedActive || dom.guidedLayer.hidden || !sourceImage?.naturalWidth) return;
   const marker = $(".free-selection-frame", dom.guidedHotspots);
   const region = state.guidedRegions[0];
   if (!marker || !region) return;
@@ -1289,9 +1360,18 @@ function drawGuidedBubble(index, options = {}) {
   const region = state.guidedRegions[index];
   const placed = imageRegionRect(region);
   const bounds = placed.layerRect;
+  const regionVisible = placed.left + placed.width > 0
+    && placed.top + placed.height > 0
+    && placed.left < bounds.width
+    && placed.top < bounds.height;
+  if (!regionVisible) {
+    dom.guidedCanvas.hidden = true;
+    return;
+  }
   const mobile = isMobileLayout();
-  const sourceWidth = dom.pageImage.naturalWidth;
-  const sourceHeight = dom.pageImage.naturalHeight;
+  const sourceImage = state.guidedSourceImage || dom.pageImage;
+  const sourceWidth = sourceImage.naturalWidth;
+  const sourceHeight = sourceImage.naturalHeight;
   const paddingX = Math.max(2, region.width * 0.02);
   const paddingY = Math.max(2, region.height * 0.025);
   const cropX = Math.max(0, region.x - paddingX);
@@ -1338,7 +1418,7 @@ function drawGuidedBubble(index, options = {}) {
   context.fillStyle = "#fff";
   context.fillRect(0, 0, displayWidth, displayHeight);
   context.filter = `brightness(${state.brightness}%) contrast(${state.contrast}%)`;
-  context.drawImage(dom.pageImage, cropX, cropY, cropWidth, cropHeight, 0, 0, displayWidth, displayHeight);
+  context.drawImage(sourceImage, cropX, cropY, cropWidth, cropHeight, 0, 0, displayWidth, displayHeight);
   canvas.hidden = false;
 
   if (options.animate !== false && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1378,6 +1458,8 @@ function closeGuidedMode() {
   state.guidedActive = false;
   state.guidedRegions = [];
   state.guidedRegionIndex = -1;
+  state.guidedSourceImage = null;
+  state.guidedSourcePageIndex = null;
   dom.guidedHotspots.replaceChildren();
   dom.guidedCanvas.hidden = true;
   dom.guidedCanvas.classList.remove("is-popping");
@@ -1397,6 +1479,8 @@ function startManualRegion() {
   dom.guidedHotspots.replaceChildren();
   state.guidedRegions = [];
   state.guidedRegionIndex = -1;
+  state.guidedSourceImage = null;
+  state.guidedSourcePageIndex = null;
   state.manualMode = true;
   state.manualStart = null;
   state.manualPointerId = null;
@@ -1417,17 +1501,48 @@ function cancelManualRegion() {
   dom.manualSelection.hidden = true;
 }
 
-function pointInImage(event) {
-  const rect = dom.pageImage.getBoundingClientRect();
+function readerImagesForCurrentView() {
+  if (state.viewMode === "scroll") {
+    return $$(".scroll-page-shell img", dom.scrollPages).filter((image) => image.naturalWidth && image.naturalHeight);
+  }
+  const images = [dom.pageImage];
+  if (state.viewMode === "double" && !dom.secondPageShell.hidden) images.push(dom.secondPageImage);
+  return images.filter((image) => image.naturalWidth && image.naturalHeight);
+}
+
+function readerImageAtPoint(event) {
+  let candidate = event.target?.closest?.("img");
+  if (!candidate) candidate = event.target?.closest?.(".scroll-page-shell")?.querySelector("img");
+  if (candidate?.naturalWidth) {
+    const rect = candidate.getBoundingClientRect();
+    if (event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom) return candidate;
+  }
+  return readerImagesForCurrentView().find((image) => {
+    const rect = image.getBoundingClientRect();
+    return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  }) || null;
+}
+
+function pageIndexForImage(image) {
+  if (state.viewMode === "scroll") {
+    return Number(image.closest(".scroll-page-shell")?.dataset.index ?? state.pageIndex);
+  }
+  return image === dom.secondPageImage ? Math.min(state.pageCount - 1, state.pageIndex + 1) : state.pageIndex;
+}
+
+function pointInImage(event, sourceImage = readerImageAtPoint(event)) {
+  if (!sourceImage) return null;
+  const rect = sourceImage.getBoundingClientRect();
   const x = Math.max(rect.left, Math.min(rect.right, event.clientX));
   const y = Math.max(rect.top, Math.min(rect.bottom, event.clientY));
-  return { x, y, rect };
+  return { x, y, rect, image: sourceImage, pageIndex: pageIndexForImage(sourceImage) };
 }
 
 function manualPointerDown(event) {
   if (!state.manualMode || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
   if (event.target.closest?.("button, canvas, input, a, .guided-topbar, .guided-controls")) return;
   const point = pointInImage(event);
+  if (!point) return;
   if (event.clientX < point.rect.left || event.clientX > point.rect.right || event.clientY < point.rect.top || event.clientY > point.rect.bottom) return;
   event.preventDefault();
   state.manualStart = point;
@@ -1443,7 +1558,8 @@ function manualPointerDown(event) {
 function manualPointerMove(event) {
   if (!state.manualMode || !state.manualStart || event.pointerId !== state.manualPointerId) return;
   event.preventDefault();
-  const point = pointInImage(event);
+  const point = pointInImage(event, state.manualStart.image);
+  if (!point) return;
   const left = Math.min(state.manualStart.x, point.x);
   const top = Math.min(state.manualStart.y, point.y);
   dom.manualSelection.style.left = `${left}px`;
@@ -1465,8 +1581,10 @@ function manualPointerCancel(event) {
 function manualPointerUp(event) {
   if (!state.manualMode || !state.manualStart || event.pointerId !== state.manualPointerId) return;
   event.preventDefault();
-  const end = pointInImage(event);
+  const end = pointInImage(event, state.manualStart.image);
+  if (!end) return;
   const start = state.manualStart;
+  const sourceImage = start.image;
   const imageRect = start.rect;
   let width = Math.abs(end.x - start.x);
   let height = Math.abs(end.y - start.y);
@@ -1487,8 +1605,8 @@ function manualPointerUp(event) {
     top = Math.max(imageRect.top, Math.min(imageRect.bottom - height, centerY - height / 2));
   }
 
-  const scaleX = dom.pageImage.naturalWidth / imageRect.width;
-  const scaleY = dom.pageImage.naturalHeight / imageRect.height;
+  const scaleX = sourceImage.naturalWidth / imageRect.width;
+  const scaleY = sourceImage.naturalHeight / imageRect.height;
   const region = {
     x: (left - imageRect.left) * scaleX,
     y: (top - imageRect.top) * scaleY,
@@ -1498,6 +1616,8 @@ function manualPointerUp(event) {
   };
   state.guidedRegions = [region];
   state.guidedRegionIndex = 0;
+  state.guidedSourceImage = sourceImage;
+  state.guidedSourcePageIndex = start.pageIndex;
   state.guidedActive = true;
   cancelManualRegion();
   dom.guidedLayer.hidden = false;
@@ -1903,7 +2023,10 @@ function bindEvents() {
       else if (!dom.settingsSheet.hidden) closeSettings();
       return;
     }
-    if (event.key.toLowerCase() === "f") { event.preventDefault(); startGuidedMode(); }
+    if (event.key.toLowerCase() === "g" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      startGuidedMode();
+    }
     else if (event.key === "ArrowRight") state.direction === "ltr" ? nextPage() : previousPage();
     else if (event.key === "ArrowLeft") state.direction === "ltr" ? previousPage() : nextPage();
     else if (event.key === "PageDown" || event.key === " ") {

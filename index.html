@@ -8,7 +8,7 @@
     <title>PalhagHQ — Leitor de quadrinhos</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./styles.css?v=5-free-zoom" />
+    <link rel="stylesheet" href="./styles.css?v=6-reader-flow" />
   </head>
   <body>
     <div id="app">
@@ -172,7 +172,7 @@
             <button id="guidedButton" class="guided-button" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="m9 15 6-6M11 9h4v4"/></svg>
               <span id="guidedButtonLabel">Zoom Livre</span>
-              <kbd>F</kbd>
+              <kbd>G</kbd>
             </button>
             <button id="fullscreenButton" class="tool-button" type="button" aria-label="Tela cheia">
               <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
@@ -195,13 +195,13 @@
             <div id="pageStage" class="page-stage fit-page">
               <div class="page-shell page-shell-primary">
                 <img id="pageImage" class="page-image" alt="Página atual do quadrinho" draggable="false" />
-                <div id="manualSelection" class="manual-selection" hidden></div>
               </div>
               <div id="secondPageShell" class="page-shell page-shell-secondary" hidden>
                 <img id="secondPageImage" class="page-image" alt="Segunda página do quadrinho" draggable="false" />
               </div>
             </div>
             <div id="scrollPages" class="scroll-pages" hidden></div>
+            <div id="manualSelection" class="manual-selection" hidden></div>
 
             <button id="previousPageZone" class="page-zone page-zone-previous" type="button" aria-label="Página anterior">
               <svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
@@ -352,7 +352,7 @@
           <div class="shortcut-card">
             <span>ATALHOS</span>
             <div><kbd>←</kbd><kbd>→</kbd> páginas</div>
-            <div><kbd>F</kbd> Zoom Livre</div>
+            <div><kbd>G</kbd> Zoom Livre</div>
             <div><kbd>+ −</kbd> zoom</div>
           </div>
         </aside>
@@ -372,6 +372,6 @@
 
     <script src="./vendor/unarchiver/unarchiver.min.js"></script>
     <script>window.LocalUnarchiver = Unarchiver;</script>
-    <script type="module" src="./app.js?v=5-free-zoom"></script>
+    <script type="module" src="./app.js?v=6-reader-flow"></script>
   </body>
 </html>

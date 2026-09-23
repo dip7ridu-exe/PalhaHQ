@@ -1091,6 +1091,75 @@ svg {
   max-width: 50%;
 }
 
+.page-stage.double-mode {
+  perspective: 1800px;
+  perspective-origin: center;
+}
+
+.page-stage.double-mode .page-shell {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.page-stage.page-turning .page-shell:not(.page-turn-leaf) {
+  transform: scale(0.985);
+  transition: transform 480ms ease;
+}
+
+.page-shell.page-turn-leaf {
+  z-index: 8;
+  transform-origin: var(--page-turn-origin, left center);
+  animation: page-leaf-turn 540ms cubic-bezier(.2, .72, .18, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.page-shell.page-turn-leaf::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #d7d4ca, #f7f4e9 38%, #c7c4bb);
+  box-shadow: inset 18px 0 32px rgba(0, 0, 0, 0.2);
+  transform: rotateY(180deg) translateZ(1px);
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+
+@keyframes page-leaf-turn {
+  0% {
+    transform: rotateY(0deg) translateZ(0);
+    opacity: 1;
+    filter: drop-shadow(0 18px 45px rgba(0, 0, 0, 0.4));
+  }
+  48% {
+    opacity: 0.96;
+    filter: drop-shadow(0 28px 38px rgba(0, 0, 0, 0.68));
+  }
+  100% {
+    transform: rotateY(var(--page-turn-angle, -168deg)) translateZ(2px);
+    opacity: 0.18;
+    filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.25));
+  }
+}
+
+.page-stage.page-turn-arrive-next {
+  animation: spread-arrive-next 260ms ease-out both;
+}
+
+.page-stage.page-turn-arrive-previous {
+  animation: spread-arrive-previous 260ms ease-out both;
+}
+
+@keyframes spread-arrive-next {
+  from { opacity: 0.45; transform: translateX(18px) scale(0.985); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes spread-arrive-previous {
+  from { opacity: 0.45; transform: translateX(-18px) scale(0.985); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
 .page-stage.double-mode .page-image {
   max-height: calc(100vh - var(--header-h) - var(--footer-h) - 56px);
   max-height: calc(100dvh - var(--header-h) - var(--footer-h) - 56px);
