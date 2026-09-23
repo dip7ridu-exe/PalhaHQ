@@ -22,6 +22,8 @@ Não é necessário configurar banco de dados, servidor, chave de API ou variáv
 - **Quero ler:** salva uma ficha sem o arquivo para lembrar depois.
 - **Vinculação direta:** arraste CBR, CBZ ou PDF sobre uma ficha da biblioteca ou do catálogo para associar o arquivo à edição.
 - **Zoom Livre:** mantém a página visível e permite arrastar com o mouse ou com o dedo sobre qualquer fala, caixa de texto ou detalhe da arte.
+- **Zoom móvel completo:** faça pinça para ampliar e arraste com um dedo para percorrer toda a página sem reduzir a nitidez, inclusive na rolagem vertical.
+- **Ampliação móvel do Zoom Livre:** o trecho ampliado pode ser reposicionado por arrasto e ajustado por pinça, sem uma segunda marcação sobre a HQ.
 - **Toque rápido:** no celular, também é possível apenas tocar no centro do texto; o leitor cria uma área confortável automaticamente.
 - **Ampliação ajustável:** use **−**, **+** ou o indicador central para escolher de 1,5× a 6× e restaurar o padrão de 2,8×.
 - **Nova área:** toque no trecho ampliado ou no botão **Nova área** para selecionar outra parte da mesma página.
@@ -29,6 +31,7 @@ Não é necessário configurar banco de dados, servidor, chave de API ou variáv
 - **Setas:** mudam de página conforme a direção escolhida.
 - **+ / − / 0:** altera ou restaura o zoom.
 - **Página única, dupla e rolagem vertical:** o Zoom Livre funciona sem trocar o modo atual.
+- **Mesmos modos no celular:** página única, página dupla e rolagem ficam disponíveis também em telas pequenas.
 - **Virada de página:** no modo de duas páginas, avançar ou voltar reproduz uma animação de folha virando; a animação é reduzida quando essa preferência estiver ativa no sistema.
 - **Celular:** layout adaptado às áreas seguras da tela, miniaturas isoladas da barra inferior, controles completos de zoom, rotação e tela cheia, além de rolagem contínua sem saltos de página.
 - **Brilho, contraste, rotação, largura, página inteira e tela cheia.**

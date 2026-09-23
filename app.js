@@ -11,8 +11,8 @@ import {
   saveComicFiles,
   saveLibraryComic,
   storageEstimate,
-} from "./library.js?v=6-reader-flow";
-import { searchComicCatalog } from "./catalog.js?v=6-reader-flow";
+} from "./library.js?v=7-mobile-zoom";
+import { searchComicCatalog } from "./catalog.js?v=7-mobile-zoom";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -140,6 +140,10 @@ const state = {
   direction: "ltr",
   fit: "page",
   zoom: 1,
+  panX: 0,
+  panY: 0,
+  panPointerId: null,
+  panStart: null,
   rotation: 0,
   brightness: 100,
   contrast: 100,
@@ -152,6 +156,9 @@ const state = {
   freeZoomFactor: 2.8,
   guidedSourceImage: null,
   guidedSourcePageIndex: null,
+  guidedPreviewPosition: null,
+  guidedPreviewPointers: new Map(),
+  guidedPreviewGesture: null,
   manualMode: false,
   manualStart: null,
   manualPointerId: null,
@@ -171,7 +178,28 @@ const state = {
   pageAspect: null,
   guidedLayoutFrame: null,
   pageTurnBusy: false,
-  touch: { startX: 0, startY: 0, startTime: 0, pinchDistance: 0, pinchZoom: 1, lastTap: 0 },
+  touch: {
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    pinchDistance: 0,
+    pinchZoom: 1,
+    pinchPanX: 0,
+    pinchPanY: 0,
+    pinchCenterX: 0,
+    pinchCenterY: 0,
+    pinchViewportX: 0,
+    pinchViewportY: 0,
+    pinchScrollLeft: 0,
+    pinchScrollTop: 0,
+    panStartX: 0,
+    panStartY: 0,
+    panOriginX: 0,
+    panOriginY: 0,
+    isPanning: false,
+    isPinching: false,
+    lastTap: 0,
+  },
 };
 
 function readJson(key, fallback) {
@@ -796,6 +824,8 @@ async function startReaderWithFiles(files, comic) {
     state.pageCount = reader.pageCount;
     state.pageIndex = Math.min(comic.page || 0, reader.pageCount - 1);
     state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
     state.rotation = 0;
     state.pageAspect = null;
     await showReader();
@@ -1027,6 +1057,7 @@ async function setPage(index, options = {}) {
     if (!dom.scrollPages.childElementCount) await renderScrollView();
     scrollToPageShell(state.pageIndex, options.smooth ? "smooth" : "auto");
   } else {
+    resetPagePan();
     await renderPagedView();
     dom.readerViewport.scrollTo({ left: 0, top: 0 });
   }
@@ -1177,13 +1208,13 @@ function buildThumbnails() {
 
 async function setViewMode(mode, rerender = true) {
   if (!['single', 'double', 'scroll'].includes(mode)) return;
-  if (mode === "double" && matchMedia("(max-width: 760px)").matches) {
-    mode = "single";
-    toast("No celular, a página única mantém o quadrinho legível. Gire a tela para usar página dupla.");
-  }
   if (state.guidedActive) closeGuidedMode();
   state.viewMode = mode;
   state.zoom = 1;
+  state.panX = 0;
+  state.panY = 0;
+  dom.scrollPages.style.width = "100%";
+  dom.readerViewport.classList.remove("is-zoomed", "is-panning");
   state.scrollObserver?.disconnect();
   dom.scrollPages.replaceChildren();
   dom.readerViewport.classList.toggle("scroll-mode", mode === "scroll");
@@ -1214,6 +1245,7 @@ function setFit(fit) {
   $$('[data-fit]').forEach((button) => button.classList.toggle("active", button.dataset.fit === fit));
   dom.fitLabel.textContent = fit === "page" ? "Ajustar" : fit === "width" ? "Largura" : "Original";
   persistPrefs();
+  requestAnimationFrame(clampPagePan);
   queueGuidedLayout();
 }
 
@@ -1222,24 +1254,92 @@ function cycleFit() {
   setFit(order[(order.indexOf(state.fit) + 1) % order.length]);
 }
 
-function setZoom(value) {
-  if (state.viewMode === "scroll") return;
-  state.zoom = Math.max(0.5, Math.min(5, Math.round(value * 20) / 20));
+function pagePanLimits(zoom = state.zoom) {
+  if (state.viewMode === "scroll" || zoom <= 1.001 || !dom.pageImage.offsetWidth) return { x: 0, y: 0 };
+  const images = [dom.pageImage];
+  if (state.viewMode === "double" && !dom.secondPageShell.hidden) images.push(dom.secondPageImage);
+  const quarterTurn = Math.abs(state.rotation % 180) === 90;
+  const gap = images.length > 1 ? 12 : 0;
+  const baseWidth = images.reduce((total, image) => total + (quarterTurn ? image.offsetHeight : image.offsetWidth), 0) + gap;
+  const baseHeight = Math.max(...images.map((image) => quarterTurn ? image.offsetWidth : image.offsetHeight));
+  const viewportWidth = dom.readerViewport.clientWidth;
+  const viewportHeight = dom.readerViewport.clientHeight;
+  return {
+    x: Math.max(0, (baseWidth * zoom - viewportWidth) / 2 + 18),
+    y: Math.max(0, (baseHeight * zoom - viewportHeight) / 2 + 18),
+  };
+}
+
+function applyPagePan(x = state.panX, y = state.panY, options = {}) {
+  const limits = pagePanLimits(options.zoom ?? state.zoom);
+  state.panX = Math.max(-limits.x, Math.min(limits.x, Number.isFinite(x) ? x : 0));
+  state.panY = Math.max(-limits.y, Math.min(limits.y, Number.isFinite(y) ? y : 0));
+  dom.pageStage.style.setProperty("--pan-x", `${state.panX}px`);
+  dom.pageStage.style.setProperty("--pan-y", `${state.panY}px`);
+}
+
+function clampPagePan() {
+  applyPagePan(state.panX, state.panY);
+  queueGuidedLayout();
+}
+
+function resetPagePan() {
+  state.panX = 0;
+  state.panY = 0;
+  state.panPointerId = null;
+  state.panStart = null;
+  state.touch.isPanning = false;
+  state.touch.isPinching = false;
+  dom.readerViewport.classList.remove("is-panning");
+  applyPagePan(0, 0);
+}
+
+function setZoom(value, options = {}) {
+  const previousZoom = state.zoom;
+  const minimumZoom = state.viewMode === "scroll" ? 1 : 0.5;
+  const maximumZoom = state.viewMode === "scroll" ? 4 : 5;
+  state.zoom = Math.max(minimumZoom, Math.min(maximumZoom, Math.round(value * 100) / 100));
   dom.pageStage.style.setProperty("--zoom", state.zoom);
+  dom.scrollPages.style.width = `${state.zoom * 100}%`;
   dom.zoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
   dom.mobileZoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
+  dom.readerViewport.classList.toggle("is-zoomed", state.zoom > 1.01 && state.viewMode !== "scroll");
+
+  if (state.viewMode === "scroll") {
+    state.panX = 0;
+    state.panY = 0;
+    queueGuidedLayout();
+    return;
+  }
+
+  if (state.zoom <= 1.01) {
+    state.panX = 0;
+    state.panY = 0;
+  } else if (options.anchor && previousZoom > 0) {
+    const ratio = state.zoom / previousZoom;
+    state.panX = options.anchor.x - (options.anchor.x - state.panX) * ratio;
+    state.panY = options.anchor.y - (options.anchor.y - state.panY) * ratio;
+  }
+
+  applyPagePan(state.panX, state.panY);
+  if (!options.immediate) requestAnimationFrame(clampPagePan);
   queueGuidedLayout();
 }
 
 function applyPageVisuals() {
   dom.pageStage.style.setProperty("--zoom", state.zoom);
+  dom.pageStage.style.setProperty("--pan-x", `${state.panX}px`);
+  dom.pageStage.style.setProperty("--pan-y", `${state.panY}px`);
   dom.pageStage.style.setProperty("--rotation", `${state.rotation}deg`);
   dom.pageStage.style.setProperty("--brightness", state.brightness / 100);
   dom.pageStage.style.setProperty("--contrast", state.contrast / 100);
   dom.scrollPages.style.setProperty("--brightness", state.brightness / 100);
   dom.scrollPages.style.setProperty("--contrast", state.contrast / 100);
+  dom.scrollPages.style.width = `${state.viewMode === "scroll" ? state.zoom * 100 : 100}%`;
   dom.zoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
   dom.mobileZoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
+  dom.readerViewport.classList.toggle("is-zoomed", state.zoom > 1.01 && state.viewMode !== "scroll");
+  requestAnimationFrame(clampPagePan);
   queueGuidedLayout();
 }
 
@@ -1252,6 +1352,7 @@ function applyPreferencesToUi() {
 
 function rotatePage() {
   state.rotation = (state.rotation + 90) % 360;
+  resetPagePan();
   applyPageVisuals();
 }
 
@@ -1302,6 +1403,10 @@ async function startGuidedMode() {
   state.freeZoomFactor = 2.8;
   state.guidedSourceImage = null;
   state.guidedSourcePageIndex = null;
+  state.guidedPreviewPosition = null;
+  state.guidedPreviewPointers.clear();
+  state.guidedPreviewGesture = null;
+  dom.guidedLayer.classList.remove("has-preview");
   dom.guidedLayer.hidden = false;
   dom.guidedCanvas.hidden = true;
   dom.guidedButton.classList.add("active");
@@ -1330,7 +1435,7 @@ function imageRegionRect(region) {
 
 function renderGuidedHotspots() {
   dom.guidedHotspots.replaceChildren();
-  if (!state.guidedRegions[0]) return;
+  if (!state.guidedRegions[0] || isMobileLayout()) return;
   const marker = document.createElement("div");
   marker.className = "free-selection-frame";
   dom.guidedHotspots.append(marker);
@@ -1366,6 +1471,7 @@ function drawGuidedBubble(index, options = {}) {
     && placed.top < bounds.height;
   if (!regionVisible) {
     dom.guidedCanvas.hidden = true;
+    dom.guidedLayer.classList.remove("has-preview");
     return;
   }
   const mobile = isMobileLayout();
@@ -1380,9 +1486,9 @@ function drawGuidedBubble(index, options = {}) {
   const cropHeight = Math.min(sourceHeight - cropY, region.height + paddingY * 2);
   const aspect = cropWidth / cropHeight;
 
-  const minWidth = mobile ? Math.min(180, bounds.width - 20) : Math.min(220, bounds.width - 36);
-  const maxWidth = bounds.width * (mobile ? 0.94 : 0.64);
-  const maxHeight = bounds.height * (mobile ? 0.56 : 0.66);
+  const minWidth = mobile ? Math.min(210, bounds.width - 20) : Math.min(220, bounds.width - 36);
+  const maxWidth = bounds.width * (mobile ? 0.92 : 0.64);
+  const maxHeight = bounds.height * (mobile ? 0.48 : 0.66);
   let displayWidth = Math.min(maxWidth, Math.max(minWidth, placed.width * state.freeZoomFactor));
   let displayHeight = displayWidth / aspect;
   if (displayHeight > maxHeight) {
@@ -1395,7 +1501,7 @@ function drawGuidedBubble(index, options = {}) {
   const sideMargin = mobile ? 10 : 18;
   const topInset = mobile ? 58 : 64;
   const bottomInset = mobile ? 78 : 86;
-  const left = Math.max(sideMargin, Math.min(bounds.width - displayWidth - sideMargin, centerX - displayWidth / 2));
+  let left = Math.max(sideMargin, Math.min(bounds.width - displayWidth - sideMargin, centerX - displayWidth / 2));
   const below = placed.top + placed.height + 14;
   const above = placed.top - displayHeight - 14;
   let top;
@@ -1403,7 +1509,15 @@ function drawGuidedBubble(index, options = {}) {
   else if (above >= topInset) top = above;
   else top = Math.max(topInset, Math.min(bounds.height - displayHeight - bottomInset, centerY - displayHeight / 2));
 
-  const dpr = Math.min(mobile ? 1.5 : 2, devicePixelRatio || 1);
+  if (state.guidedPreviewPosition) {
+    left = state.guidedPreviewPosition.x;
+    top = state.guidedPreviewPosition.y;
+  }
+  left = Math.max(sideMargin, Math.min(bounds.width - displayWidth - sideMargin, left));
+  top = Math.max(topInset, Math.min(bounds.height - displayHeight - bottomInset, top));
+  state.guidedPreviewPosition = { x: left, y: top };
+
+  const dpr = Math.min(mobile ? 3 : 2.5, devicePixelRatio || 1);
   const canvas = dom.guidedCanvas;
   canvas.width = Math.max(1, Math.round(displayWidth * dpr));
   canvas.height = Math.max(1, Math.round(displayHeight * dpr));
@@ -1420,6 +1534,7 @@ function drawGuidedBubble(index, options = {}) {
   context.filter = `brightness(${state.brightness}%) contrast(${state.contrast}%)`;
   context.drawImage(sourceImage, cropX, cropY, cropWidth, cropHeight, 0, 0, displayWidth, displayHeight);
   canvas.hidden = false;
+  dom.guidedLayer.classList.add("has-preview");
 
   if (options.animate !== false && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     canvas.classList.remove("is-popping");
@@ -1460,10 +1575,14 @@ function closeGuidedMode() {
   state.guidedRegionIndex = -1;
   state.guidedSourceImage = null;
   state.guidedSourcePageIndex = null;
+  state.guidedPreviewPosition = null;
+  state.guidedPreviewPointers.clear();
+  state.guidedPreviewGesture = null;
   dom.guidedHotspots.replaceChildren();
   dom.guidedCanvas.hidden = true;
   dom.guidedCanvas.classList.remove("is-popping");
   dom.guidedLayer.hidden = true;
+  dom.guidedLayer.classList.remove("has-preview");
   dom.emptyDetection.hidden = true;
   dom.guidedButton.classList.remove("active");
   dom.guidedButtonLabel.textContent = "Zoom Livre";
@@ -1481,6 +1600,10 @@ function startManualRegion() {
   state.guidedRegionIndex = -1;
   state.guidedSourceImage = null;
   state.guidedSourcePageIndex = null;
+  state.guidedPreviewPosition = null;
+  state.guidedPreviewPointers.clear();
+  state.guidedPreviewGesture = null;
+  dom.guidedLayer.classList.remove("has-preview");
   state.manualMode = true;
   state.manualStart = null;
   state.manualPointerId = null;
@@ -1535,7 +1658,15 @@ function pointInImage(event, sourceImage = readerImageAtPoint(event)) {
   const rect = sourceImage.getBoundingClientRect();
   const x = Math.max(rect.left, Math.min(rect.right, event.clientX));
   const y = Math.max(rect.top, Math.min(rect.bottom, event.clientY));
-  return { x, y, rect, image: sourceImage, pageIndex: pageIndexForImage(sourceImage) };
+  return {
+    x,
+    y,
+    naturalX: ((x - rect.left) / Math.max(1, rect.width)) * sourceImage.naturalWidth,
+    naturalY: ((y - rect.top) / Math.max(1, rect.height)) * sourceImage.naturalHeight,
+    rect,
+    image: sourceImage,
+    pageIndex: pageIndexForImage(sourceImage),
+  };
 }
 
 function manualPointerDown(event) {
@@ -1585,33 +1716,35 @@ function manualPointerUp(event) {
   if (!end) return;
   const start = state.manualStart;
   const sourceImage = start.image;
-  const imageRect = start.rect;
-  let width = Math.abs(end.x - start.x);
-  let height = Math.abs(end.y - start.y);
-  let left = Math.min(start.x, end.x);
-  let top = Math.min(start.y, end.y);
+  const imageRect = sourceImage.getBoundingClientRect();
+  const screenWidth = Math.abs(end.x - start.x);
+  const screenHeight = Math.abs(end.y - start.y);
+  let width = Math.abs(end.naturalX - start.naturalX);
+  let height = Math.abs(end.naturalY - start.naturalY);
+  let left = Math.min(start.naturalX, end.naturalX);
+  let top = Math.min(start.naturalY, end.naturalY);
 
-  if (width < 12 && height < 12) {
-    width = Math.min(imageRect.width * 0.32, isMobileLayout() ? 132 : 210);
-    height = Math.min(imageRect.height * 0.12, isMobileLayout() ? 82 : 124);
-    left = Math.max(imageRect.left, Math.min(imageRect.right - width, end.x - width / 2));
-    top = Math.max(imageRect.top, Math.min(imageRect.bottom - height, end.y - height / 2));
+  if (screenWidth < 12 && screenHeight < 12) {
+    width = sourceImage.naturalWidth * (isMobileLayout() ? 0.3 : 0.24);
+    height = sourceImage.naturalHeight * (isMobileLayout() ? 0.1 : 0.085);
+    left = Math.max(0, Math.min(sourceImage.naturalWidth - width, end.naturalX - width / 2));
+    top = Math.max(0, Math.min(sourceImage.naturalHeight - height, end.naturalY - height / 2));
   } else {
     const centerX = left + width / 2;
     const centerY = top + height / 2;
-    width = Math.min(imageRect.width, Math.max(34, width + 12));
-    height = Math.min(imageRect.height, Math.max(24, height + 12));
-    left = Math.max(imageRect.left, Math.min(imageRect.right - width, centerX - width / 2));
-    top = Math.max(imageRect.top, Math.min(imageRect.bottom - height, centerY - height / 2));
+    const padX = (12 / Math.max(1, imageRect.width)) * sourceImage.naturalWidth;
+    const padY = (12 / Math.max(1, imageRect.height)) * sourceImage.naturalHeight;
+    width = Math.min(sourceImage.naturalWidth, Math.max(sourceImage.naturalWidth * 0.045, width + padX));
+    height = Math.min(sourceImage.naturalHeight, Math.max(sourceImage.naturalHeight * 0.025, height + padY));
+    left = Math.max(0, Math.min(sourceImage.naturalWidth - width, centerX - width / 2));
+    top = Math.max(0, Math.min(sourceImage.naturalHeight - height, centerY - height / 2));
   }
 
-  const scaleX = sourceImage.naturalWidth / imageRect.width;
-  const scaleY = sourceImage.naturalHeight / imageRect.height;
   const region = {
-    x: (left - imageRect.left) * scaleX,
-    y: (top - imageRect.top) * scaleY,
-    width: width * scaleX,
-    height: height * scaleY,
+    x: left,
+    y: top,
+    width,
+    height,
     confidence: 1,
   };
   state.guidedRegions = [region];
@@ -1626,11 +1759,135 @@ function manualPointerUp(event) {
   dom.mobileGuidedButton.classList.add("active");
   renderGuidedHotspots();
   updateFreeZoomUi();
-  dom.guidedHelp.textContent = "Toque no ampliado ou em Nova área para escolher outro trecho";
+  dom.guidedHelp.textContent = "Arraste a ampliação para mover · use pinça ou +/− para ajustar";
   requestAnimationFrame(() => {
     positionGuidedHotspots();
     drawGuidedBubble(0);
   });
+}
+
+function clampGuidedPreviewPosition(x, y) {
+  const bounds = dom.guidedLayer.getBoundingClientRect();
+  const preview = dom.guidedCanvas.getBoundingClientRect();
+  const side = isMobileLayout() ? 10 : 18;
+  const top = isMobileLayout() ? 58 : 64;
+  const bottom = isMobileLayout() ? 78 : 86;
+  return {
+    x: Math.max(side, Math.min(bounds.width - preview.width - side, x)),
+    y: Math.max(top, Math.min(bounds.height - preview.height - bottom, y)),
+  };
+}
+
+function guidedPreviewPointerDown(event) {
+  if (!state.guidedActive || state.manualMode || dom.guidedCanvas.hidden) return;
+  event.preventDefault();
+  event.stopPropagation();
+  dom.guidedCanvas.setPointerCapture?.(event.pointerId);
+  state.guidedPreviewPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+  if (state.guidedPreviewPointers.size >= 2) {
+    const [a, b] = [...state.guidedPreviewPointers.values()];
+    state.guidedPreviewGesture = {
+      type: "pinch",
+      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      zoom: state.freeZoomFactor,
+    };
+  } else {
+    const rect = dom.guidedCanvas.getBoundingClientRect();
+    state.guidedPreviewGesture = {
+      type: "drag",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: rect.left - dom.guidedLayer.getBoundingClientRect().left,
+      originY: rect.top - dom.guidedLayer.getBoundingClientRect().top,
+    };
+    dom.guidedCanvas.classList.add("is-dragging");
+  }
+}
+
+function guidedPreviewPointerMove(event) {
+  if (!state.guidedPreviewPointers.has(event.pointerId) || !state.guidedPreviewGesture) return;
+  event.preventDefault();
+  event.stopPropagation();
+  state.guidedPreviewPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+  if (state.guidedPreviewPointers.size >= 2) {
+    const [a, b] = [...state.guidedPreviewPointers.values()];
+    if (state.guidedPreviewGesture.type !== "pinch") {
+      state.guidedPreviewGesture = {
+        type: "pinch",
+        distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+        zoom: state.freeZoomFactor,
+      };
+      return;
+    }
+    const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    state.freeZoomFactor = Math.max(1.5, Math.min(6, state.guidedPreviewGesture.zoom * (distance / state.guidedPreviewGesture.distance)));
+    updateFreeZoomUi();
+    drawGuidedBubble(state.guidedRegionIndex, { animate: false });
+    return;
+  }
+
+  const gesture = state.guidedPreviewGesture;
+  if (gesture.type !== "drag" || gesture.pointerId !== event.pointerId) return;
+  const next = clampGuidedPreviewPosition(
+    gesture.originX + event.clientX - gesture.startX,
+    gesture.originY + event.clientY - gesture.startY,
+  );
+  state.guidedPreviewPosition = next;
+  dom.guidedCanvas.style.left = `${next.x}px`;
+  dom.guidedCanvas.style.top = `${next.y}px`;
+}
+
+function guidedPreviewPointerEnd(event) {
+  if (!state.guidedPreviewPointers.has(event.pointerId)) return;
+  state.guidedPreviewPointers.delete(event.pointerId);
+  try { dom.guidedCanvas.releasePointerCapture?.(event.pointerId); } catch { /* captura já encerrada */ }
+  dom.guidedCanvas.classList.remove("is-dragging");
+
+  if (state.guidedPreviewPointers.size === 1) {
+    const [pointerId, point] = [...state.guidedPreviewPointers.entries()][0];
+    const rect = dom.guidedCanvas.getBoundingClientRect();
+    const layerRect = dom.guidedLayer.getBoundingClientRect();
+    state.guidedPreviewGesture = {
+      type: "drag",
+      pointerId,
+      startX: point.x,
+      startY: point.y,
+      originX: rect.left - layerRect.left,
+      originY: rect.top - layerRect.top,
+    };
+  } else if (!state.guidedPreviewPointers.size) {
+    state.guidedPreviewGesture = null;
+  }
+}
+
+function pagePanPointerDown(event) {
+  if (event.pointerType === "touch" || state.viewMode === "scroll" || state.zoom <= 1.01) return;
+  if (state.manualMode || state.guidedActive || event.button !== 0 || event.target.closest?.("button, input")) return;
+  event.preventDefault();
+  state.panPointerId = event.pointerId;
+  state.panStart = { x: event.clientX, y: event.clientY, panX: state.panX, panY: state.panY };
+  dom.readerViewport.classList.add("is-panning");
+  dom.readerViewport.setPointerCapture?.(event.pointerId);
+}
+
+function pagePanPointerMove(event) {
+  if (state.panPointerId !== event.pointerId || !state.panStart) return;
+  event.preventDefault();
+  applyPagePan(
+    state.panStart.panX + event.clientX - state.panStart.x,
+    state.panStart.panY + event.clientY - state.panStart.y,
+  );
+}
+
+function pagePanPointerEnd(event) {
+  if (state.panPointerId !== event.pointerId) return;
+  try { dom.readerViewport.releasePointerCapture?.(event.pointerId); } catch { /* captura já encerrada */ }
+  state.panPointerId = null;
+  state.panStart = null;
+  dom.readerViewport.classList.remove("is-panning");
 }
 
 async function saveCatalogItem(item, options = {}) {
@@ -1940,17 +2197,24 @@ function bindEvents() {
   dom.guidedZoomValueButton.addEventListener("click", resetFreeZoom);
   dom.manualRegionButton.addEventListener("click", startManualRegion);
   dom.startManualButton.addEventListener("click", startManualRegion);
-  dom.guidedCanvas.addEventListener("click", startManualRegion);
   dom.guidedCanvas.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       startManualRegion();
     }
   });
+  dom.guidedCanvas.addEventListener("pointerdown", guidedPreviewPointerDown);
+  dom.guidedCanvas.addEventListener("pointermove", guidedPreviewPointerMove);
+  dom.guidedCanvas.addEventListener("pointerup", guidedPreviewPointerEnd);
+  dom.guidedCanvas.addEventListener("pointercancel", guidedPreviewPointerEnd);
   dom.readerViewport.addEventListener("pointerdown", manualPointerDown);
   dom.readerViewport.addEventListener("pointermove", manualPointerMove);
   dom.readerViewport.addEventListener("pointerup", manualPointerUp);
   dom.readerViewport.addEventListener("pointercancel", manualPointerCancel);
+  dom.readerViewport.addEventListener("pointerdown", pagePanPointerDown);
+  dom.readerViewport.addEventListener("pointermove", pagePanPointerMove);
+  dom.readerViewport.addEventListener("pointerup", pagePanPointerEnd);
+  dom.readerViewport.addEventListener("pointercancel", pagePanPointerEnd);
 
   dom.readerViewport.addEventListener("wheel", (event) => {
     if ((event.ctrlKey || event.metaKey) && state.viewMode !== "scroll") {
@@ -1960,36 +2224,101 @@ function bindEvents() {
   }, { passive: false });
 
   dom.readerViewport.addEventListener("touchstart", (event) => {
-    if (state.manualMode) return;
+    if (state.manualMode || event.target.closest?.(".guided-bubble, .guided-controls, .guided-topbar")) return;
     resetControlsTimer();
     if (event.touches.length === 2) {
+      const viewportRect = dom.readerViewport.getBoundingClientRect();
+      const middleX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+      const middleY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
       state.touch.pinchDistance = Math.hypot(
         event.touches[0].clientX - event.touches[1].clientX,
         event.touches[0].clientY - event.touches[1].clientY,
       );
       state.touch.pinchZoom = state.zoom;
+      state.touch.pinchPanX = state.panX;
+      state.touch.pinchPanY = state.panY;
+      state.touch.pinchCenterX = middleX - viewportRect.left - viewportRect.width / 2;
+      state.touch.pinchCenterY = middleY - viewportRect.top - viewportRect.height / 2;
+      state.touch.pinchViewportX = middleX - viewportRect.left;
+      state.touch.pinchViewportY = middleY - viewportRect.top;
+      state.touch.pinchScrollLeft = dom.readerViewport.scrollLeft;
+      state.touch.pinchScrollTop = dom.readerViewport.scrollTop;
+      state.touch.isPinching = true;
+      state.touch.isPanning = false;
+      if (state.viewMode !== "scroll") dom.readerViewport.classList.add("is-panning");
       return;
     }
     const touch = event.touches[0];
+    if (!touch) return;
     state.touch.startX = touch.clientX;
     state.touch.startY = touch.clientY;
     state.touch.startTime = Date.now();
+    if (state.viewMode !== "scroll" && state.zoom > 1.01) {
+      state.touch.isPanning = true;
+      state.touch.panStartX = touch.clientX;
+      state.touch.panStartY = touch.clientY;
+      state.touch.panOriginX = state.panX;
+      state.touch.panOriginY = state.panY;
+      dom.readerViewport.classList.add("is-panning");
+    }
   }, { passive: true });
 
   dom.readerViewport.addEventListener("touchmove", (event) => {
-    if (state.manualMode) return;
-    if (event.touches.length !== 2 || state.viewMode === "scroll") return;
-    event.preventDefault();
-    const distance = Math.hypot(
-      event.touches[0].clientX - event.touches[1].clientX,
-      event.touches[0].clientY - event.touches[1].clientY,
-    );
-    if (state.touch.pinchDistance) setZoom(state.touch.pinchZoom * (distance / state.touch.pinchDistance));
+    if (state.manualMode || event.target.closest?.(".guided-bubble, .guided-controls, .guided-topbar")) return;
+    if (event.touches.length === 2 && state.touch.pinchDistance) {
+      event.preventDefault();
+      const distance = Math.hypot(
+        event.touches[0].clientX - event.touches[1].clientX,
+        event.touches[0].clientY - event.touches[1].clientY,
+      );
+      const viewportRect = dom.readerViewport.getBoundingClientRect();
+      const currentCenterX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - viewportRect.left - viewportRect.width / 2;
+      const currentCenterY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - viewportRect.top - viewportRect.height / 2;
+      const nextZoom = state.touch.pinchZoom * (distance / state.touch.pinchDistance);
+      setZoom(nextZoom, { immediate: true });
+      const ratio = Math.max(0.01, state.zoom / state.touch.pinchZoom);
+      if (state.viewMode === "scroll") {
+        const currentViewportX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - viewportRect.left;
+        const currentViewportY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - viewportRect.top;
+        dom.readerViewport.scrollLeft = (state.touch.pinchScrollLeft + state.touch.pinchViewportX) * ratio - currentViewportX;
+        dom.readerViewport.scrollTop = (state.touch.pinchScrollTop + state.touch.pinchViewportY) * ratio - currentViewportY;
+        return;
+      }
+      applyPagePan(
+        currentCenterX - (state.touch.pinchCenterX - state.touch.pinchPanX) * ratio,
+        currentCenterY - (state.touch.pinchCenterY - state.touch.pinchPanY) * ratio,
+      );
+      return;
+    }
+
+    if (event.touches.length === 1 && state.touch.isPanning && state.zoom > 1.01) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      applyPagePan(
+        state.touch.panOriginX + touch.clientX - state.touch.panStartX,
+        state.touch.panOriginY + touch.clientY - state.touch.panStartY,
+      );
+    }
   }, { passive: false });
 
   dom.readerViewport.addEventListener("touchend", (event) => {
-    if (state.manualMode) return;
-    if (state.viewMode === "scroll" || state.zoom > 1.1 || event.changedTouches.length !== 1) return;
+    if (state.manualMode || event.target.closest?.(".guided-bubble, .guided-controls, .guided-topbar")) return;
+    const wasManipulating = state.touch.isPinching || state.touch.isPanning;
+    if (event.touches.length === 1 && state.zoom > 1.01 && state.viewMode !== "scroll") {
+      const touch = event.touches[0];
+      state.touch.isPinching = false;
+      state.touch.isPanning = true;
+      state.touch.panStartX = touch.clientX;
+      state.touch.panStartY = touch.clientY;
+      state.touch.panOriginX = state.panX;
+      state.touch.panOriginY = state.panY;
+      return;
+    }
+    state.touch.isPinching = false;
+    state.touch.isPanning = false;
+    state.touch.pinchDistance = 0;
+    dom.readerViewport.classList.remove("is-panning");
+    if (wasManipulating || state.viewMode === "scroll" || state.zoom > 1.01 || event.changedTouches.length !== 1) return;
     const touch = event.changedTouches[0];
     const dx = touch.clientX - state.touch.startX;
     const dy = touch.clientY - state.touch.startY;
@@ -1998,6 +2327,13 @@ function bindEvents() {
       if ((dx < 0 && state.direction === "ltr") || (dx > 0 && state.direction === "rtl")) nextPage();
       else previousPage();
     }
+  }, { passive: true });
+
+  dom.readerViewport.addEventListener("touchcancel", () => {
+    state.touch.isPinching = false;
+    state.touch.isPanning = false;
+    state.touch.pinchDistance = 0;
+    dom.readerViewport.classList.remove("is-panning");
   }, { passive: true });
 
   dom.readerViewport.addEventListener("dblclick", () => {

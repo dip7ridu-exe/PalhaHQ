@@ -1,11 +1,11 @@
-const CACHE_NAME = "palhaghq-v6-reader-flow";
+const CACHE_NAME = "palhaghq-v7-mobile-zoom";
 const CORE_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=6-reader-flow",
-  "./app.js?v=6-reader-flow",
-  "./library.js?v=6-reader-flow",
-  "./catalog.js?v=6-reader-flow",
+  "./styles.css?v=7-mobile-zoom",
+  "./app.js?v=7-mobile-zoom",
+  "./library.js?v=7-mobile-zoom",
+  "./catalog.js?v=7-mobile-zoom",
   "./favicon.svg",
   "./manifest.webmanifest",
   "./vendor/pdfjs/pdf.mjs",

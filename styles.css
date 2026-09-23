@@ -996,7 +996,21 @@ svg {
 }
 
 .reader-viewport.scroll-mode {
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-x pan-y;
+}
+
+.reader-viewport.is-zoomed:not(.scroll-mode):not(.manual-mode) {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.reader-viewport.is-zoomed:not(.manual-mode) .page-image {
+  cursor: grab;
+}
+
+.reader-viewport.is-panning .page-image {
+  cursor: grabbing;
+  transition: none;
 }
 
 .reader-viewport.manual-mode {
@@ -1025,6 +1039,8 @@ svg {
 
 .page-stage {
   --zoom: 1;
+  --pan-x: 0px;
+  --pan-y: 0px;
   min-width: 100%;
   min-height: 100%;
   padding: 28px 50px;
@@ -1054,9 +1070,10 @@ svg {
   user-select: none;
   -webkit-user-drag: none;
   filter: brightness(var(--brightness, 1)) contrast(var(--contrast, 1));
-  transform: scale(var(--zoom)) rotate(var(--rotation, 0deg));
+  transform: translate3d(var(--pan-x), var(--pan-y), 0) scale(var(--zoom)) rotate(var(--rotation, 0deg));
   transform-origin: center;
   transition: transform 180ms ease;
+  will-change: transform;
 }
 
 .fit-page .page-image {
@@ -1205,7 +1222,7 @@ svg {
 
 .scroll-page-shell {
   aspect-ratio: var(--page-aspect, 0.6667);
-  width: min(100%, 1000px);
+  width: min(100%, 1600px);
   min-height: 0;
   margin: 0 auto 8px;
   display: grid;
@@ -1416,15 +1433,21 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 18px;
   background: white;
   box-shadow: 0 20px 55px rgba(0, 0, 0, 0.72), 0 0 0 5px rgba(216, 255, 72, 0.12);
-  cursor: pointer;
+  cursor: grab;
   pointer-events: auto;
-  touch-action: manipulation;
+  touch-action: none;
   transform-origin: center;
 }
 
 .free-zoom-preview {
   border-radius: 16px;
-  cursor: crosshair;
+  cursor: grab;
+}
+
+.guided-bubble.is-dragging,
+.free-zoom-preview.is-dragging {
+  cursor: grabbing;
+  box-shadow: 0 26px 62px rgba(0, 0, 0, 0.78), 0 0 0 6px rgba(216, 255, 72, 0.2);
 }
 
 .guided-bubble:focus-visible {
@@ -2371,12 +2394,32 @@ kbd {
     inset: var(--header-h) 0 var(--footer-h) 0;
   }
 
+  .guided-layer.has-preview .guided-hotspots {
+    display: none;
+  }
+
+  .guided-layer.has-preview .guided-bubble {
+    border-width: 2px;
+    border-radius: 15px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.74), 0 0 0 4px rgba(216, 255, 72, 0.13);
+  }
+
   .guided-topbar {
     top: 12px;
   }
 
   .guided-help {
     display: none;
+  }
+
+  .guided-layer.has-preview .guided-help {
+    width: max-content;
+    max-width: calc(100% - 28px);
+    bottom: 76px;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .guided-controls {

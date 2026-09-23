@@ -8,7 +8,7 @@
     <title>PalhagHQ — Leitor de quadrinhos</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./styles.css?v=6-reader-flow" />
+    <link rel="stylesheet" href="./styles.css?v=7-mobile-zoom" />
   </head>
   <body>
     <div id="app">
@@ -212,7 +212,7 @@
 
             <div id="guidedLayer" class="guided-layer free-zoom-layer" hidden>
               <div id="guidedHotspots" class="guided-hotspots" aria-hidden="true"></div>
-              <canvas id="guidedCanvas" class="guided-bubble free-zoom-preview" tabindex="0" role="button" aria-label="Trecho ampliado; toque para marcar outra área" hidden></canvas>
+              <canvas id="guidedCanvas" class="guided-bubble free-zoom-preview" tabindex="0" role="img" aria-label="Trecho ampliado; arraste para mover e use pinça para ajustar" hidden></canvas>
               <div class="guided-topbar">
                 <div class="guided-status">
                   <span class="guided-pulse" aria-hidden="true"></span>
@@ -372,6 +372,6 @@
 
     <script src="./vendor/unarchiver/unarchiver.min.js"></script>
     <script>window.LocalUnarchiver = Unarchiver;</script>
-    <script type="module" src="./app.js?v=6-reader-flow"></script>
+    <script type="module" src="./app.js?v=7-mobile-zoom"></script>
   </body>
 </html>
