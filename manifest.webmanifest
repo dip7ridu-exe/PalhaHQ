@@ -1,0 +1,19 @@
+{
+  "name": "PalhagHQ — Leitor de quadrinhos",
+  "short_name": "PalhagHQ",
+  "description": "Biblioteca privada de HQs com leitura de CBR, CBZ e PDF e Zoom Livre para ampliar qualquer texto.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

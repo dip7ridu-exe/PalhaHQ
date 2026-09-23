@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#090b10" />
+    <meta name="description" content="Biblioteca privada de HQs com leitura de CBR, CBZ e PDF e Zoom Livre para ampliar qualquer texto." />
+    <title>PalhagHQ — Leitor de quadrinhos</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css?v=5-free-zoom" />
+  </head>
+  <body>
+    <div id="app">
+      <section id="homeView" class="home-view library-app">
+        <header class="home-header app-header">
+          <a class="brand" href="./" aria-label="PalhagHQ — biblioteca">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32"><path d="M6.5 5.5h19v15h-9.7l-6 5v-5H6.5z"/></svg>
+            </span>
+            <span>PalhagHQ</span>
+          </a>
+
+          <nav class="app-navigation" aria-label="Navegação principal">
+            <button id="libraryNavButton" class="app-nav-button active" type="button" data-home-panel="libraryPanel">
+              <svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5a2.5 2.5 0 0 0 0 5H20"/><path d="M7 8h8"/></svg>
+              Biblioteca
+            </button>
+            <button id="discoverNavButton" class="app-nav-button" type="button" data-home-panel="discoverPanel">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+              Descobrir
+            </button>
+          </nav>
+
+          <div class="home-header-actions">
+            <span class="privacy-pill"><span class="privacy-dot" aria-hidden="true"></span>Biblioteca privada neste aparelho</span>
+            <button id="headerImportButton" class="header-import-button" type="button">
+              <svg viewBox="0 0 24 24"><path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v5h14v-5"/></svg>
+              Importar HQ
+            </button>
+            <button id="themeButton" class="icon-button" type="button" aria-label="Alternar tema" title="Alternar tema">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 1 0 7 7c0-.5-.1-1-.2-1.5A8.5 8.5 0 1 1 12 3Z"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <main class="library-main">
+          <section id="libraryPanel" class="home-panel" aria-labelledby="libraryTitle">
+            <div class="library-heading">
+              <div>
+                <p class="eyebrow"><span>MINHA COLEÇÃO</span> LOCAL E PRIVADA</p>
+                <h1 id="libraryTitle">Sua biblioteca</h1>
+                <p>HQs que você tem, quer ler e está acompanhando — organizadas em um só lugar.</p>
+              </div>
+              <div class="library-stats" aria-label="Resumo da biblioteca">
+                <div><strong id="libraryTotalCount">0</strong><span>títulos</span></div>
+                <div><strong id="libraryFileCount">0</strong><span>prontos para ler</span></div>
+                <div><strong id="libraryReadingCount">0</strong><span>em leitura</span></div>
+              </div>
+            </div>
+
+            <div id="dropZone" class="library-drop-zone" tabindex="0" role="button" aria-controls="fileInput">
+              <span class="library-drop-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M16 21V6m0 0-6 6m6-6 6 6M6 20v5h20v-5"/></svg>
+              </span>
+              <div><strong>Arraste sua HQ para a biblioteca</strong><span>O arquivo será identificado, receberá uma capa e ficará pronto para continuar depois.</span></div>
+              <button id="openButton" class="primary-button compact" type="button">Escolher arquivo</button>
+              <small>CBR · CBZ · ZIP · PDF · imagens</small>
+            </div>
+
+            <div class="library-toolbar">
+              <label class="library-search" for="librarySearchInput">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+                <input id="librarySearchInput" type="search" placeholder="Buscar na minha biblioteca" autocomplete="off" />
+              </label>
+              <div class="library-filters" aria-label="Filtrar biblioteca">
+                <button class="library-filter active" type="button" data-library-filter="all">Todas</button>
+                <button class="library-filter" type="button" data-library-filter="owned">Com arquivo</button>
+                <button class="library-filter" type="button" data-library-filter="wishlist">Quero ler</button>
+              </div>
+            </div>
+
+            <div id="libraryGrid" class="comic-grid" aria-live="polite"></div>
+          </section>
+
+          <section id="discoverPanel" class="home-panel discover-panel" aria-labelledby="discoverTitle" hidden>
+            <div class="discover-heading">
+              <p class="eyebrow"><span>CATÁLOGO</span> MARVEL · DC · MANGÁS · INDEPENDENTES</p>
+              <h1 id="discoverTitle">Descubra sua próxima HQ</h1>
+              <p>Pesquise uma edição, veja a sinopse e salve para lembrar. Para ler, vincule o arquivo que você possui.</p>
+            </div>
+
+            <form id="catalogSearchForm" class="catalog-search-form" role="search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+              <input id="catalogSearchInput" type="search" placeholder="Ex.: Absolute Batman, X-Men, Sandman…" autocomplete="off" required />
+              <button type="submit">Pesquisar</button>
+            </form>
+
+            <div class="catalog-suggestions" aria-label="Pesquisas sugeridas">
+              <span>Explorar:</span>
+              <button type="button" data-catalog-query="Marvel Comics">Marvel</button>
+              <button type="button" data-catalog-query="DC Comics">DC</button>
+              <button type="button" data-catalog-query="Batman graphic novel">Batman</button>
+              <button type="button" data-catalog-query="X-Men comics">X-Men</button>
+              <button type="button" data-catalog-query="mangá">Mangás</button>
+              <button type="button" data-catalog-query="graphic novel">Graphic novels</button>
+            </div>
+
+            <details class="catalog-config">
+              <summary>Configurar catálogo avançado</summary>
+              <div>
+                <label for="googleApiKeyInput">Chave da Google Books API <span>opcional</span></label>
+                <div class="api-key-row">
+                  <input id="googleApiKeyInput" type="password" placeholder="Cole sua chave restrita ao domínio do site" autocomplete="off" />
+                  <button id="saveCatalogSettingsButton" type="button">Salvar neste aparelho</button>
+                </div>
+                <small>Sem uma chave, o PalhagHQ tenta o catálogo público disponível e usa a Open Library como alternativa.</small>
+              </div>
+            </details>
+
+            <div id="catalogStatus" class="catalog-status">
+              <span class="catalog-status-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M5 7h9a4 4 0 0 1 4 4v16a4 4 0 0 0-4-4H5z"/><path d="M27 7h-5a4 4 0 0 0-4 4v16a4 4 0 0 1 4-4h5z"/></svg></span>
+              <div><strong>Pesquise pelo nome da HQ</strong><span>Você poderá salvar a ficha ou arrastar seu arquivo diretamente sobre o resultado.</span></div>
+            </div>
+            <div id="catalogResults" class="comic-grid catalog-grid" aria-live="polite"></div>
+          </section>
+        </main>
+
+        <footer class="home-footer app-footer">
+          <span>PalhagHQ</span>
+          <span>Metadados pela Google Books e Open Library</span>
+          <span>Seus arquivos não são enviados</span>
+        </footer>
+
+        <dialog id="comicDetailDialog" class="comic-detail-dialog">
+          <button id="closeComicDetailButton" class="dialog-close" type="button" aria-label="Fechar detalhes">
+            <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+          <div id="comicDetailContent"></div>
+        </dialog>
+      </section>
+
+      <section id="readerView" class="reader-view" hidden aria-label="Leitor de quadrinhos">
+        <header class="reader-header">
+          <button id="closeReaderButton" class="reader-logo" type="button" aria-label="Fechar quadrinho e voltar">
+            <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6.5 5.5h19v15h-9.7l-6 5v-5H6.5z"/></svg></span>
+            <span class="reader-brand-word">PalhagHQ</span>
+          </button>
+
+          <div class="book-title-block">
+            <strong id="bookTitle">Quadrinho</strong>
+            <span id="bookMeta">CBR · leitura local</span>
+            <span id="mobilePageIndicator" class="mobile-page-indicator">1 / 1</span>
+          </div>
+
+          <div class="reader-center-controls" aria-label="Controles de visualização">
+            <button id="zoomOutButton" class="tool-button" type="button" aria-label="Diminuir zoom">
+              <svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>
+            </button>
+            <button id="zoomValueButton" class="zoom-value" type="button" title="Restaurar zoom">100%</button>
+            <button id="zoomInButton" class="tool-button" type="button" aria-label="Aumentar zoom">
+              <svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>
+            </button>
+            <span class="tool-separator"></span>
+            <button id="fitButton" class="tool-button tool-button-wide" type="button" aria-label="Alternar ajuste da página">
+              <svg viewBox="0 0 24 24"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4"/></svg>
+              <span id="fitLabel">Ajustar</span>
+            </button>
+          </div>
+
+          <div class="reader-actions">
+            <button id="guidedButton" class="guided-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="m9 15 6-6M11 9h4v4"/></svg>
+              <span id="guidedButtonLabel">Zoom Livre</span>
+              <kbd>F</kbd>
+            </button>
+            <button id="fullscreenButton" class="tool-button" type="button" aria-label="Tela cheia">
+              <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+            </button>
+            <button id="settingsButton" class="tool-button" type="button" aria-label="Configurações">
+              <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="reader-body">
+          <aside id="thumbnailRail" class="thumbnail-rail" aria-label="Miniaturas das páginas">
+            <button id="thumbnailToggle" class="rail-toggle" type="button" aria-label="Ocultar miniaturas">
+              <svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg>
+            </button>
+            <div id="thumbnailList" class="thumbnail-list"></div>
+          </aside>
+
+          <main id="readerViewport" class="reader-viewport" tabindex="0">
+            <div id="pageStage" class="page-stage fit-page">
+              <div class="page-shell page-shell-primary">
+                <img id="pageImage" class="page-image" alt="Página atual do quadrinho" draggable="false" />
+                <div id="manualSelection" class="manual-selection" hidden></div>
+              </div>
+              <div id="secondPageShell" class="page-shell page-shell-secondary" hidden>
+                <img id="secondPageImage" class="page-image" alt="Segunda página do quadrinho" draggable="false" />
+              </div>
+            </div>
+            <div id="scrollPages" class="scroll-pages" hidden></div>
+
+            <button id="previousPageZone" class="page-zone page-zone-previous" type="button" aria-label="Página anterior">
+              <svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+            </button>
+            <button id="nextPageZone" class="page-zone page-zone-next" type="button" aria-label="Próxima página">
+              <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+
+            <div id="guidedLayer" class="guided-layer free-zoom-layer" hidden>
+              <div id="guidedHotspots" class="guided-hotspots" aria-hidden="true"></div>
+              <canvas id="guidedCanvas" class="guided-bubble free-zoom-preview" tabindex="0" role="button" aria-label="Trecho ampliado; toque para marcar outra área" hidden></canvas>
+              <div class="guided-topbar">
+                <div class="guided-status">
+                  <span class="guided-pulse" aria-hidden="true"></span>
+                  <span>Zoom Livre</span>
+                  <strong id="guidedCounter">Marque uma área</strong>
+                </div>
+                <button id="closeGuidedButton" class="guided-close" type="button" aria-label="Sair do Zoom Livre">
+                  <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+              <div class="guided-help" id="guidedHelp">Arraste sobre uma fala ou toque no trecho que quer ampliar</div>
+              <div class="guided-controls">
+                <button id="guidedZoomOutButton" class="guided-secondary guided-zoom-step" type="button" aria-label="Diminuir ampliação">
+                  <svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>
+                </button>
+                <button id="guidedZoomValueButton" class="guided-zoom-value" type="button" title="Restaurar ampliação">2,8×</button>
+                <button id="guidedZoomInButton" class="guided-secondary guided-zoom-step" type="button" aria-label="Aumentar ampliação">
+                  <svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>
+                </button>
+                <button id="manualRegionButton" class="guided-primary" type="button">
+                  <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+                  Nova área
+                </button>
+              </div>
+            </div>
+
+            <div id="emptyDetection" class="detection-message" hidden role="status">
+              <div class="feature-icon speech-icon" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M7 8h26v19H19l-7 6v-6H7z"/><path d="M13 15h14M13 20h9"/></svg></div>
+              <div><strong>Escolha livremente o que deseja ampliar.</strong><span>Arraste sobre uma fala ou toque no centro dela.</span></div>
+              <button id="startManualButton" type="button">Marcar área</button>
+            </div>
+          </main>
+
+          <aside class="quick-rail" aria-label="Modo de leitura">
+            <span class="quick-label">EXIBIÇÃO</span>
+            <button class="quick-button active" type="button" data-view-mode="single" aria-label="Página única" title="Página única">
+              <svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1"/></svg>
+            </button>
+            <button class="quick-button" type="button" data-view-mode="double" aria-label="Página dupla" title="Página dupla">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/></svg>
+            </button>
+            <button class="quick-button" type="button" data-view-mode="scroll" aria-label="Rolagem vertical" title="Rolagem vertical">
+              <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="7" rx="1"/><rect x="5" y="14" width="14" height="7" rx="1"/><path d="m9 12 3 2 3-2"/></svg>
+            </button>
+            <span class="quick-divider"></span>
+            <button id="rotateButton" class="quick-button" type="button" aria-label="Girar página" title="Girar página">
+              <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>
+            </button>
+          </aside>
+        </div>
+
+        <footer class="reader-footer">
+          <button id="footerPreviousButton" class="footer-nav-button" type="button" aria-label="Página anterior">
+            <svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+          </button>
+          <div class="progress-wrap">
+            <span id="footerCurrentPage">1</span>
+            <input id="pageSlider" type="range" min="1" max="1" value="1" aria-label="Ir para a página" />
+            <span id="footerTotalPages">1</span>
+          </div>
+          <button id="footerNextButton" class="footer-nav-button" type="button" aria-label="Próxima página">
+            <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+          </button>
+        </footer>
+
+        <nav class="mobile-dock" aria-label="Controles móveis">
+          <button id="mobilePreviousButton" type="button"><svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg><span>Anterior</span></button>
+          <button id="mobileThumbsButton" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></svg><span>Páginas</span></button>
+          <button id="mobileGuidedButton" class="mobile-guided" type="button"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="m9 15 6-6M11 9h4v4"/></svg><span>Zoom</span></button>
+          <button id="mobileNextButton" type="button"><svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg><span>Próxima</span></button>
+          <button id="mobileSettingsButton" type="button"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19 12h3M2 12h3M12 2v3M12 19v3"/></svg><span>Ajustes</span></button>
+        </nav>
+
+        <div id="settingsBackdrop" class="sheet-backdrop" hidden></div>
+        <aside id="settingsSheet" class="settings-sheet" aria-labelledby="settingsTitle" hidden>
+          <div class="sheet-handle" aria-hidden="true"></div>
+          <div class="sheet-header">
+            <div><span>LEITURA</span><h2 id="settingsTitle">Ajustes</h2></div>
+            <button id="closeSettingsButton" class="icon-button" type="button" aria-label="Fechar ajustes"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+          </div>
+
+          <fieldset class="setting-group">
+            <legend>Modo de exibição</legend>
+            <div class="segmented-control segmented-three">
+              <button class="active" type="button" data-view-mode="single">Uma página</button>
+              <button type="button" data-view-mode="double">Duas páginas</button>
+              <button type="button" data-view-mode="scroll">Rolagem</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="setting-group">
+            <legend>Direção da leitura</legend>
+            <div class="segmented-control">
+              <button id="directionLtr" class="active" type="button">Ocidental →</button>
+              <button id="directionRtl" type="button">← Mangá</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="setting-group">
+            <legend>Ajuste da página</legend>
+            <div class="segmented-control segmented-three">
+              <button class="active" type="button" data-fit="page">Página</button>
+              <button type="button" data-fit="width">Largura</button>
+              <button type="button" data-fit="original">Original</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="setting-group">
+            <legend>Zoom e tela</legend>
+            <div class="mobile-view-tools">
+              <button id="mobileZoomOutButton" class="mobile-view-tool" type="button" aria-label="Diminuir zoom">−</button>
+              <button id="mobileZoomValueButton" class="mobile-view-tool mobile-zoom-value" type="button" aria-label="Restaurar zoom">100%</button>
+              <button id="mobileZoomInButton" class="mobile-view-tool" type="button" aria-label="Aumentar zoom">+</button>
+              <button id="mobileRotateButton" class="mobile-view-tool" type="button" aria-label="Girar página">
+                <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>
+                Girar
+              </button>
+              <button id="mobileFullscreenButton" class="mobile-view-tool" type="button" aria-label="Tela cheia">
+                <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+                Tela cheia
+              </button>
+            </div>
+          </fieldset>
+
+          <div class="setting-group sliders-group">
+            <label for="brightnessSlider"><span>Brilho</span><output id="brightnessOutput">100%</output></label>
+            <input id="brightnessSlider" type="range" min="60" max="140" value="100" />
+            <label for="contrastSlider"><span>Contraste</span><output id="contrastOutput">100%</output></label>
+            <input id="contrastSlider" type="range" min="60" max="160" value="100" />
+          </div>
+
+          <div class="setting-row">
+            <div><strong>Interface automática</strong><span>Esconde os controles durante a leitura</span></div>
+            <button id="autoHideToggle" class="switch active" type="button" role="switch" aria-checked="true"><span></span></button>
+          </div>
+
+          <div class="shortcut-card">
+            <span>ATALHOS</span>
+            <div><kbd>←</kbd><kbd>→</kbd> páginas</div>
+            <div><kbd>F</kbd> Zoom Livre</div>
+            <div><kbd>+ −</kbd> zoom</div>
+          </div>
+        </aside>
+      </section>
+
+      <input id="fileInput" class="visually-hidden" type="file" accept=".cbr,.cbz,.rar,.zip,.pdf,image/jpeg,image/png,image/webp,image/avif" multiple />
+
+      <div id="loadingOverlay" class="loading-overlay" hidden role="status" aria-live="polite">
+        <div class="loader-orbit"><span></span></div>
+        <strong id="loadingTitle">Abrindo seu quadrinho…</strong>
+        <span id="loadingDetail">Lendo as páginas no seu aparelho</span>
+        <div class="loading-track"><span id="loadingBar"></span></div>
+      </div>
+
+      <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+    </div>
+
+    <script src="./vendor/unarchiver/unarchiver.min.js"></script>
+    <script>window.LocalUnarchiver = Unarchiver;</script>
+    <script type="module" src="./app.js?v=5-free-zoom"></script>
+  </body>
+</html>
