@@ -1,11 +1,11 @@
-const CACHE_NAME = "palhaghq-v8-scroll-fit";
+const CACHE_NAME = "palhaghq-v9-desktop-mobile-merge";
 const CORE_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=8-scroll-fit",
-  "./app.js?v=8-scroll-fit",
-  "./library.js?v=8-scroll-fit",
-  "./catalog.js?v=8-scroll-fit",
+  "./styles.css?v=9-desktop-mobile-merge",
+  "./app.js?v=9-desktop-mobile-merge",
+  "./library.js?v=9-desktop-mobile-merge",
+  "./catalog.js?v=9-desktop-mobile-merge",
   "./favicon.svg",
   "./manifest.webmanifest",
   "./vendor/pdfjs/pdf.mjs",

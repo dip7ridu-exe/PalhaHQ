@@ -11,8 +11,8 @@ import {
   saveComicFiles,
   saveLibraryComic,
   storageEstimate,
-} from "./library.js?v=8-scroll-fit";
-import { searchComicCatalog } from "./catalog.js?v=8-scroll-fit";
+} from "./library.js?v=9-desktop-mobile-merge";
+import { searchComicCatalog } from "./catalog.js?v=9-desktop-mobile-merge";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -22,6 +22,7 @@ const HISTORY_KEY = "balao-reader-history-v1";
 const PREFS_KEY = "balao-reader-prefs-v1";
 const CATALOG_KEY = "balao-reader-catalog-v1";
 const isMobileLayout = () => matchMedia("(max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1024px)").matches;
+const usesDesktopReaderLayout = () => !isMobileLayout();
 
 const dom = {
   homeView: $("#homeView"),
@@ -1256,17 +1257,21 @@ function setFit(fit) {
   dom.scrollPages.classList.add(`fit-${fit}`);
   $$('[data-fit]').forEach((button) => button.classList.toggle("active", button.dataset.fit === fit));
   dom.fitLabel.textContent = fit === "page" ? "Página" : fit === "width" ? "Largura" : "Original";
-  state.zoom = 1;
-  resetPagePan();
-  dom.readerViewport.classList.remove("is-zoomed", "is-panning");
-  dom.pageStage.style.setProperty("--zoom", state.zoom);
-  dom.zoomValueButton.textContent = "100%";
-  dom.mobileZoomValueButton.textContent = "100%";
+  if (usesDesktopReaderLayout()) {
+    state.zoom = 1;
+    resetPagePan();
+    dom.readerViewport.classList.remove("is-zoomed", "is-panning");
+    dom.pageStage.style.setProperty("--zoom", state.zoom);
+    dom.zoomValueButton.textContent = "100%";
+    dom.mobileZoomValueButton.textContent = "100%";
+  }
   updateScrollLayout();
   persistPrefs();
   requestAnimationFrame(() => {
-    clampPagePan();
-    if (state.viewMode === "scroll" && state.reader) scrollToPageShell(state.pageIndex);
+    if (usesDesktopReaderLayout()) {
+      clampPagePan();
+      if (state.viewMode === "scroll" && state.reader) scrollToPageShell(state.pageIndex);
+    }
   });
   queueGuidedLayout();
 }
@@ -1292,6 +1297,12 @@ function updateScrollLayout() {
   if (!dom.scrollPages) return;
   if (state.viewMode !== "scroll") {
     dom.scrollPages.style.width = "100%";
+    dom.scrollPages.style.removeProperty("--scroll-page-width");
+    return;
+  }
+
+  if (!usesDesktopReaderLayout()) {
+    dom.scrollPages.style.width = `${state.zoom * 100}%`;
     dom.scrollPages.style.removeProperty("--scroll-page-width");
     return;
   }
@@ -1345,8 +1356,9 @@ function resetPagePan() {
 
 function setZoom(value, options = {}) {
   const previousZoom = state.zoom;
-  const minimumZoom = 0.5;
-  const maximumZoom = state.viewMode === "scroll" ? 3 : 5;
+  const mobileScroll = state.viewMode === "scroll" && !usesDesktopReaderLayout();
+  const minimumZoom = mobileScroll ? 1 : 0.5;
+  const maximumZoom = state.viewMode === "scroll" ? (mobileScroll ? 4 : 3) : 5;
   state.zoom = Math.max(minimumZoom, Math.min(maximumZoom, Math.round(value * 100) / 100));
   dom.pageStage.style.setProperty("--zoom", state.zoom);
   dom.zoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
@@ -2385,8 +2397,37 @@ function bindEvents() {
     dom.readerViewport.classList.remove("is-panning");
   }, { passive: true });
 
-  dom.readerViewport.addEventListener("dblclick", () => {
-    if (!state.manualMode && !state.guidedActive) setZoom(state.zoom > 1.1 ? 1 : 2.25);
+  dom.readerViewport.addEventListener("dblclick", (event) => {
+    if (state.manualMode || state.guidedActive) return;
+    event.preventDefault();
+    const nextZoom = state.zoom > 1.1 ? 1 : 2.25;
+
+    if (usesDesktopReaderLayout()) {
+      setZoom(nextZoom);
+      return;
+    }
+
+    const viewportRect = dom.readerViewport.getBoundingClientRect();
+    const viewportX = event.clientX - viewportRect.left;
+    const viewportY = event.clientY - viewportRect.top;
+    if (state.viewMode === "scroll") {
+      const previousZoom = state.zoom;
+      const previousLeft = dom.readerViewport.scrollLeft;
+      const previousTop = dom.readerViewport.scrollTop;
+      setZoom(nextZoom, { immediate: true });
+      const ratio = state.zoom / Math.max(0.01, previousZoom);
+      requestAnimationFrame(() => {
+        dom.readerViewport.scrollLeft = (previousLeft + viewportX) * ratio - viewportX;
+        dom.readerViewport.scrollTop = (previousTop + viewportY) * ratio - viewportY;
+      });
+      return;
+    }
+
+    const anchor = {
+      x: viewportX - viewportRect.width / 2,
+      y: viewportY - viewportRect.height / 2,
+    };
+    setZoom(nextZoom, nextZoom > 1 ? { anchor, immediate: true } : { immediate: true });
   });
   dom.readerViewport.addEventListener("scroll", () => {
     scheduleScrollPositionUpdate();
@@ -2395,8 +2436,10 @@ function bindEvents() {
   dom.readerView.addEventListener("pointermove", resetControlsTimer);
   dom.readerView.addEventListener("pointerdown", resetControlsTimer);
   const redrawGuidedAfterResize = () => {
-    if (state.viewMode === "scroll") updateScrollLayout();
-    else requestAnimationFrame(clampPagePan);
+    if (usesDesktopReaderLayout()) {
+      if (state.viewMode === "scroll") updateScrollLayout();
+      else requestAnimationFrame(clampPagePan);
+    }
     queueGuidedLayout();
   };
   addEventListener("resize", redrawGuidedAfterResize);

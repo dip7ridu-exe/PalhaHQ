@@ -23,9 +23,10 @@ Não é necessário configurar banco de dados, servidor, chave de API ou variáv
 - **Vinculação direta:** arraste CBR, CBZ ou PDF sobre uma ficha da biblioteca ou do catálogo para associar o arquivo à edição.
 - **Zoom Livre:** mantém a página visível e permite arrastar com o mouse ou com o dedo sobre qualquer fala, caixa de texto ou detalhe da arte.
 - **Zoom móvel completo:** faça pinça para ampliar e arraste com um dedo para percorrer toda a página sem reduzir a nitidez, inclusive na rolagem vertical.
-- **Rolagem no tamanho certo:** o modo vertical abre em ajuste de página, sem ampliar a HQ até ocupar toda a largura do PC.
-- **Ajustes reais na rolagem:** Página encaixa a folha inteira, Largura ocupa a área horizontal e Original usa os pixels do arquivo.
-- **Zoom visível em todos os modos:** os botões `−`, `100%` e `+` funcionam de 50% a 300% na rolagem e até 500% nos modos paginados.
+- **Rolagem no tamanho certo no PC:** o modo vertical abre em ajuste de página, sem ampliar a HQ até ocupar toda a largura do monitor.
+- **Ajustes reais no PC:** Página encaixa a folha inteira, Largura ocupa a área horizontal e Original usa os pixels do arquivo.
+- **Zoom separado por dispositivo:** no PC, a rolagem trabalha de 50% a 300%; no celular, foi preservado o comportamento estável da v7, de 100% a 400%.
+- **Toque duplo móvel:** amplia no ponto tocado e mantém pinça e arrasto livres, sem os recálculos de monitor introduzidos na v8.
 - **Ampliação móvel do Zoom Livre:** o trecho ampliado pode ser reposicionado por arrasto e ajustado por pinça, sem uma segunda marcação sobre a HQ.
 - **Toque rápido:** no celular, também é possível apenas tocar no centro do texto; o leitor cria uma área confortável automaticamente.
 - **Ampliação ajustável:** use **−**, **+** ou o indicador central para escolher de 1,5× a 6× e restaurar o padrão de 2,8×.

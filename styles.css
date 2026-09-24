@@ -2347,6 +2347,10 @@ kbd {
     padding-inline: 0;
   }
 
+  .scroll-page-shell {
+    width: min(100%, var(--scroll-page-width, 1600px));
+  }
+
   .settings-sheet {
     top: auto;
     left: 0;
