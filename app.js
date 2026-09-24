@@ -11,8 +11,8 @@ import {
   saveComicFiles,
   saveLibraryComic,
   storageEstimate,
-} from "./library.js?v=7-mobile-zoom";
-import { searchComicCatalog } from "./catalog.js?v=7-mobile-zoom";
+} from "./library.js?v=8-scroll-fit";
+import { searchComicCatalog } from "./catalog.js?v=8-scroll-fit";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -176,6 +176,8 @@ const state = {
   thumbnailObserver: null,
   controlsTimer: null,
   pageAspect: null,
+  pageNaturalWidth: null,
+  pageNaturalHeight: null,
   guidedLayoutFrame: null,
   pageTurnBusy: false,
   touch: {
@@ -828,6 +830,8 @@ async function startReaderWithFiles(files, comic) {
     state.panY = 0;
     state.rotation = 0;
     state.pageAspect = null;
+    state.pageNaturalWidth = null;
+    state.pageNaturalHeight = null;
     await showReader();
     setLoading(false);
   } catch (error) {
@@ -909,6 +913,8 @@ async function renderPagedView() {
   await imageLoaded(dom.pageImage);
   if (token !== state.renderToken) return;
   state.pageAspect = dom.pageImage.naturalWidth / dom.pageImage.naturalHeight;
+  state.pageNaturalWidth = dom.pageImage.naturalWidth;
+  state.pageNaturalHeight = dom.pageImage.naturalHeight;
 
   const showSecond = state.viewMode === "double" && state.pageIndex + 1 < state.pageCount;
   dom.secondPageShell.hidden = !showSecond;
@@ -934,6 +940,8 @@ async function ensurePageAspect() {
   probe.src = url;
   await imageLoaded(probe);
   state.pageAspect = probe.naturalWidth / probe.naturalHeight;
+  state.pageNaturalWidth = probe.naturalWidth;
+  state.pageNaturalHeight = probe.naturalHeight;
 }
 
 function loadScrollPage(shell) {
@@ -1033,6 +1041,7 @@ async function renderScrollView() {
   dom.pageStage.hidden = true;
   dom.scrollPages.hidden = false;
   await ensurePageAspect();
+  updateScrollLayout();
   if (!dom.scrollPages.childElementCount) buildScrollView();
   [state.pageIndex - 1, state.pageIndex, state.pageIndex + 1]
     .filter((index) => index >= 0 && index < state.pageCount)
@@ -1214,6 +1223,7 @@ async function setViewMode(mode, rerender = true) {
   state.panX = 0;
   state.panY = 0;
   dom.scrollPages.style.width = "100%";
+  dom.scrollPages.style.removeProperty("--scroll-page-width");
   dom.readerViewport.classList.remove("is-zoomed", "is-panning");
   state.scrollObserver?.disconnect();
   dom.scrollPages.replaceChildren();
@@ -1242,16 +1252,55 @@ function setFit(fit) {
   state.fit = fit;
   dom.pageStage.classList.remove("fit-page", "fit-width", "fit-original");
   dom.pageStage.classList.add(`fit-${fit}`);
+  dom.scrollPages.classList.remove("fit-page", "fit-width", "fit-original");
+  dom.scrollPages.classList.add(`fit-${fit}`);
   $$('[data-fit]').forEach((button) => button.classList.toggle("active", button.dataset.fit === fit));
-  dom.fitLabel.textContent = fit === "page" ? "Ajustar" : fit === "width" ? "Largura" : "Original";
+  dom.fitLabel.textContent = fit === "page" ? "Página" : fit === "width" ? "Largura" : "Original";
+  state.zoom = 1;
+  resetPagePan();
+  dom.readerViewport.classList.remove("is-zoomed", "is-panning");
+  dom.pageStage.style.setProperty("--zoom", state.zoom);
+  dom.zoomValueButton.textContent = "100%";
+  dom.mobileZoomValueButton.textContent = "100%";
+  updateScrollLayout();
   persistPrefs();
-  requestAnimationFrame(clampPagePan);
+  requestAnimationFrame(() => {
+    clampPagePan();
+    if (state.viewMode === "scroll" && state.reader) scrollToPageShell(state.pageIndex);
+  });
   queueGuidedLayout();
 }
 
 function cycleFit() {
   const order = ["page", "width", "original"];
   setFit(order[(order.indexOf(state.fit) + 1) % order.length]);
+}
+
+function scrollFitBaseWidth() {
+  const viewportWidth = Math.max(320, dom.readerViewport.clientWidth || innerWidth);
+  const viewportHeight = Math.max(320, dom.readerViewport.clientHeight || innerHeight);
+  const availableWidth = Math.max(240, viewportWidth - 16);
+  const availableHeight = Math.max(240, viewportHeight - 32);
+  const aspect = Number.isFinite(state.pageAspect) && state.pageAspect > 0 ? state.pageAspect : 2 / 3;
+
+  if (state.fit === "width") return availableWidth;
+  if (state.fit === "original") return Math.max(240, state.pageNaturalWidth || availableWidth);
+  return Math.min(availableWidth, availableHeight * aspect);
+}
+
+function updateScrollLayout() {
+  if (!dom.scrollPages) return;
+  if (state.viewMode !== "scroll") {
+    dom.scrollPages.style.width = "100%";
+    dom.scrollPages.style.removeProperty("--scroll-page-width");
+    return;
+  }
+
+  const viewportWidth = Math.max(320, dom.readerViewport.clientWidth || innerWidth);
+  const pageWidth = Math.max(120, scrollFitBaseWidth() * state.zoom);
+  const contentWidth = Math.max(viewportWidth, pageWidth + 16);
+  dom.scrollPages.style.width = `${Math.round(contentWidth)}px`;
+  dom.scrollPages.style.setProperty("--scroll-page-width", `${Math.round(pageWidth)}px`);
 }
 
 function pagePanLimits(zoom = state.zoom) {
@@ -1296,11 +1345,10 @@ function resetPagePan() {
 
 function setZoom(value, options = {}) {
   const previousZoom = state.zoom;
-  const minimumZoom = state.viewMode === "scroll" ? 1 : 0.5;
-  const maximumZoom = state.viewMode === "scroll" ? 4 : 5;
+  const minimumZoom = 0.5;
+  const maximumZoom = state.viewMode === "scroll" ? 3 : 5;
   state.zoom = Math.max(minimumZoom, Math.min(maximumZoom, Math.round(value * 100) / 100));
   dom.pageStage.style.setProperty("--zoom", state.zoom);
-  dom.scrollPages.style.width = `${state.zoom * 100}%`;
   dom.zoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
   dom.mobileZoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
   dom.readerViewport.classList.toggle("is-zoomed", state.zoom > 1.01 && state.viewMode !== "scroll");
@@ -1308,6 +1356,7 @@ function setZoom(value, options = {}) {
   if (state.viewMode === "scroll") {
     state.panX = 0;
     state.panY = 0;
+    updateScrollLayout();
     queueGuidedLayout();
     return;
   }
@@ -1335,7 +1384,7 @@ function applyPageVisuals() {
   dom.pageStage.style.setProperty("--contrast", state.contrast / 100);
   dom.scrollPages.style.setProperty("--brightness", state.brightness / 100);
   dom.scrollPages.style.setProperty("--contrast", state.contrast / 100);
-  dom.scrollPages.style.width = `${state.viewMode === "scroll" ? state.zoom * 100 : 100}%`;
+  updateScrollLayout();
   dom.zoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
   dom.mobileZoomValueButton.textContent = `${Math.round(state.zoom * 100)}%`;
   dom.readerViewport.classList.toggle("is-zoomed", state.zoom > 1.01 && state.viewMode !== "scroll");
@@ -2346,6 +2395,8 @@ function bindEvents() {
   dom.readerView.addEventListener("pointermove", resetControlsTimer);
   dom.readerView.addEventListener("pointerdown", resetControlsTimer);
   const redrawGuidedAfterResize = () => {
+    if (state.viewMode === "scroll") updateScrollLayout();
+    else requestAnimationFrame(clampPagePan);
     queueGuidedLayout();
   };
   addEventListener("resize", redrawGuidedAfterResize);

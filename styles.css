@@ -1222,7 +1222,7 @@ svg {
 
 .scroll-page-shell {
   aspect-ratio: var(--page-aspect, 0.6667);
-  width: min(100%, 1600px);
+  width: min(100%, var(--scroll-page-width, 1000px));
   min-height: 0;
   margin: 0 auto 8px;
   display: grid;
